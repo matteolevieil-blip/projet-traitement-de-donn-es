@@ -60,3 +60,36 @@ print('Dropped Id, pH, residual sugar, chlorides, and free sulfur dioxide column
 print(df)
 
 
+
+# --- GRAPHIQUE 4 : RAPPORT entre variables et quality ---
+# --- 14. Scatter Plots with Trend Lines (The Ultimate Proof) ---
+# We will plot every single feature against Quality.
+# We add a "Regression Line" to prove the direction of the relationship.
+# x_jitter: Shakes the dots slightly so they don't overlap perfectly.
+
+features_all = [
+    'fixed acidity', 'volatile acidity', 'citric acid', 'residual sugar',
+    'chlorides', 'free sulfur dioxide', 'total sulfur dioxide', 'density',
+    'pH', 'sulphates', 'alcohol'
+]
+# Create a 4x3 grid (12 slots for 11 features)
+fig, axes = plt.subplots(4, 3, figsize=(20, 20))
+axes = axes.flatten() # Flatten the grid for easy looping
+
+for i, col in enumerate(features_all):
+    # sns.regplot is powerful: It shows the dots AND the best-fitting line.
+    # scatter_kws={'alpha':0.3}: Makes dots transparent so we see density.
+    sns.regplot(x='quality', y=col, data=df, ax=axes[i], x_jitter=0.2, 
+                line_kws={'color':'red'}, scatter_kws={'alpha':0.3, 'color':'teal'})
+    
+    axes[i].set_title(f'{col} vs Quality', fontsize=12, fontweight='bold')
+    axes[i].set_xlabel('Quality')
+    axes[i].set_ylabel(col)
+
+# Remove the empty 12th plot
+fig.delaxes(axes[11])
+
+plt.tight_layout()
+plt.show()
+
+
