@@ -54,8 +54,8 @@ print(f'Duplicates: {df.duplicated().sum()}')
 
 
 
-df = df.drop(['Id','pH','residual sugar','free sulfur dioxide'], axis=1)
-print('Dropped Id, pH, residual sugar, and free sulfur dioxide columns.')
+df = df.drop(['Id','pH','residual sugar','free sulfur dioxide','chlorides'], axis=1)
+print('Dropped Id, pH, residual sugar, chlorides, and free sulfur dioxide columns.')
 
 print(df)
 
