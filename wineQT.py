@@ -161,5 +161,27 @@ for j in range(i + 1, len(axes)):
 plt.tight_layout()
 plt.show()
 
+# --- GRAPHIQUE 6 : La Grille adaptative des tendances ---
+# On récupère automatiquement toutes les colonnes restantes sauf la cible
+features_all = [col for col in df.columns if col not in ['quality', 'Catégorie']]
+
+# On crée une grille 3x3 car nous avons exactement 7 variables à afficher
+fig, axes = plt.subplots(3, 3, figsize=(18, 15))
+axes = axes.flatten()
+
+for i, col in enumerate(features_all):
+    sns.regplot(x='quality', y=col, data=df, ax=axes[i], x_jitter=0.2, 
+                line_kws={'color':'red'}, scatter_kws={'alpha':0.3, 'color':'teal'})
+    axes[i].set_title(f'{col} vs Qualité', fontsize=12, fontweight='bold')
+    axes[i].set_xlabel('Qualité (Note)')
+    axes[i].set_ylabel(col)
+
+# Suppression des cases vides à la fin de la grille (pour faire propre)
+for j in range(len(features_all), len(axes)):
+    fig.delaxes(axes[j])
+
+plt.suptitle("Analyse Systématique post-Feature Engineering", fontsize=20, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.show()
 
 
