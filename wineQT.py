@@ -60,8 +60,9 @@ df['sulfur_dioxide_ratio'] = np.where(
 # Variable 2 : L'indice d'impact pH / Chlorures (Indicateur d'altération)
 df['pH_chlorides_impact'] = df['pH'] * df['chlorides']
 
-# Variable 3 : Somme des "bonnes" acidités d'origine fruitée
-df['total_good_acidity'] = df['fixed acidity'] + df['citric acid']
+# Variable 3 : L'indice de pureté et de fraîcheur aromatique
+# On ajoute +0.001 au dénominateur pour éviter une division par zéro si un vin a 0 en volatile
+df['citric_volatile_ratio'] = df['citric acid'] / (df['volatile acidity'] + 0.001)
 
 print('Les 3 variables handcrafted ont été ajoutées.')
 
@@ -72,7 +73,7 @@ df = df.drop([
     'chlorides',
     'residual sugar',
     'pH',
-    'fixed acidity',
+    'volatile acidity',
     'citric acid'
 ], axis=1, errors='ignore')
 
@@ -115,3 +116,50 @@ sns.heatmap(
 plt.title("Nouvelle Matrice de Corrélation\n(Après Feature Engineering et Nettoyage)", fontweight='bold', pad=20)
 plt.tight_layout()
 plt.show()
+
+
+
+
+# =========================================================================
+# 7. VISUALISATION : IMPACT DE CHAQUE VARIABLE SUR LA QUALITÉ
+# =========================================================================
+
+# On liste toutes les variables explicatives (on exclut juste la cible 'quality')
+variables_a_tracer = [col for col in df.columns if col != 'quality']
+
+# Calcul du nombre de lignes nécessaires pour les graphiques (3 graphiques par ligne)
+nb_colonnes_grid = 3
+nb_lignes_grid = (len(variables_a_tracer) + nb_colonnes_grid - 1) // nb_colonnes_grid
+
+# Création de la figure globale
+fig, axes = plt.subplots(nb_lignes_grid, nb_colonnes_grid, figsize=(18, 5 * nb_lignes_grid))
+axes = axes.flatten() # Aplatit la matrice d'axes en tableau 1D pour boucler facilement
+
+print("Génération des boxplots par rapport à la qualité...")
+
+# Boucle pour tracer chaque variable
+for i, var in enumerate(variables_a_tracer):
+    sns.boxplot(
+        x='quality', 
+        y=var, 
+        data=df, 
+        ax=axes[i],
+        palette='viridis', # Palette de couleurs dégradées du violet au jaune
+        width=0.6,
+        fliersize=3        # Taille des points aberrants (outliers)
+    )
+    
+    axes[i].set_title(f'{var} vs Quality', fontweight='bold', fontsize=12)
+    axes[i].set_xlabel('Quality (3 à 8)')
+    axes[i].set_ylabel(var)
+    axes[i].grid(axis='y', linestyle='--', alpha=0.5)
+
+# Si le nombre de variables est impair, on cache les graphiques vides restants
+for j in range(i + 1, len(axes)):
+    fig.delaxes(axes[j])
+
+plt.tight_layout()
+plt.show()
+
+
+
