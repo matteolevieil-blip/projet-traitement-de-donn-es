@@ -50,6 +50,7 @@ print(f'Shape après suppression des doublons : {df.shape}')
 
 
 
+
 # Variable 1 : Le ratio de dioxyde de soufre (Soufre actif relatif)
 df['sulfur_dioxide_ratio'] = np.where(
     df['total sulfur dioxide'] > 0, 
@@ -57,12 +58,14 @@ df['sulfur_dioxide_ratio'] = np.where(
     0
 )
 
-# Variable 2 : L'indice d'impact pH / Chlorures (Indicateur d'altération)
-df['pH_chlorides_impact'] = df['pH'] * df['chlorides']
 
 # Variable 3 : L'indice de pureté et de fraîcheur aromatique
 # On ajoute +0.001 au dénominateur pour éviter une division par zéro si un vin a 0 en volatile
-df['citric_volatile_ratio'] = df['citric acid'] / (df['volatile acidity'] + 0.001)
+# Variable [SUPER NEW] : L'Indice d'Équilibre Global des Acides
+df['global_acidity_balance'] = (df['fixed acidity'] + df['citric acid']) / (df['volatile acidity'] + 0.001)
+
+# Création de la variable handcrafted
+df['body_extract_index'] = df['density'] / df['alcohol']
 
 print('Les 3 variables handcrafted ont été ajoutées.')
 
@@ -73,14 +76,22 @@ df = df.drop([
     'chlorides',
     'residual sugar',
     'pH',
+    'alcohol',
+    'density',
     'volatile acidity',
-    'citric acid'
+    'citric acid',
+    'fixed acidity'  # On peut aussi supprimer fixed acidity car son information est partiellement redondante avec global_acidity_balance
 ], axis=1, errors='ignore')
 
 print('Dropped free sulfur dioxide, total sulfur dioxide, and chlorides columns.')
 print(f'Shape final du DataFrame : {df.shape}\n')
 
 print(df)
+
+# Sauvegarder le jeu de données modifié dans un nouveau fichier CSV
+df.to_csv('wine_quality_modifie.csv', index=False)
+
+print("Le jeu de données modifié a été téléchargé avec succès sous le nom 'wine_quality_modifie.csv' !")
 
 
 # =========================================================================
@@ -161,27 +172,115 @@ for j in range(i + 1, len(axes)):
 plt.tight_layout()
 plt.show()
 
-# --- GRAPHIQUE 6 : La Grille adaptative des tendances ---
-# On récupère automatiquement toutes les colonnes restantes sauf la cible
+
+
+
+
+# --- GRAPHIQUE 6 : La Grille adaptative des tendances avec Coefficients ---
+# On récupère automatiquement toutes les colonnes restantes sauf la cible et la catégorie
 features_all = [col for col in df.columns if col not in ['quality', 'Catégorie']]
 
-# On crée une grille 3x3 car nous avons exactement 7 variables à afficher
-fig, axes = plt.subplots(3, 3, figsize=(18, 15))
+nb_features = len(features_all)
+nb_colonnes_grid = 3
+nb_lignes_grid = (nb_features + nb_colonnes_grid - 1) // nb_colonnes_grid
+
+fig, axes = plt.subplots(nb_lignes_grid, nb_colonnes_grid, figsize=(18, 5 * nb_lignes_grid))
 axes = axes.flatten()
 
+print("Génération des regplots avec coefficients directeurs...")
+
 for i, col in enumerate(features_all):
+    # 1. Tracé du graphique de régression
     sns.regplot(x='quality', y=col, data=df, ax=axes[i], x_jitter=0.2, 
-                line_kws={'color':'red'}, scatter_kws={'alpha':0.3, 'color':'teal'})
+                line_kws={'color':'red', 'linewidth': 2}, scatter_kws={'alpha':0.3, 'color':'teal'})
+    
+    # 2. Calcul mathématique de la pente (coefficient directeur)
+    # np.polyfit(X, Y, degre=1) renvoie [pente, ordonnée_au_origine]
+    pente, ordonnee = np.polyfit(df['quality'], df[col], 1)
+    
+    # 3. Affichage du coefficient sur le graphique
+    # On place le texte en haut à droite (coords relatives de l'axe : x=0.65, y=0.9)
+    axes[i].text(0.65, 0.9, f'Pente = {pente:.4f}', 
+                 transform=axes[i].transAxes, 
+                 fontsize=11, 
+                 fontweight='bold',
+                 color='red',
+                 bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    # Configuration des titres et axes
     axes[i].set_title(f'{col} vs Qualité', fontsize=12, fontweight='bold')
     axes[i].set_xlabel('Qualité (Note)')
     axes[i].set_ylabel(col)
+    axes[i].grid(True, linestyle='--', alpha=0.3)
 
-# Suppression des cases vides à la fin de la grille (pour faire propre)
-for j in range(len(features_all), len(axes)):
+# Suppression des cases vides
+for j in range(nb_features, len(axes)):
     fig.delaxes(axes[j])
 
-plt.suptitle("Analyse Systématique post-Feature Engineering", fontsize=20, fontweight='bold', y=1.02)
+# Ajustement pour éviter les chevauchements
 plt.tight_layout()
+plt.suptitle("Analyse Systématique et Coefficients Directeurs", fontsize=20, fontweight='bold')
+fig.subplots_adjust(top=0.90, hspace=0.4, wspace=0.3)
+
 plt.show()
+
+# --- 1. SÉPARATION ET STANDARDISATION ---
+# On isole la cible (quality) et les variables explicatives numériques
+features_all = [col for col in df.columns if col not in ['quality', 'Catégorie']]
+
+# Copie de sauvegarde pour ne pas écraser ton df d'origine
+df_scaled = df.copy()
+
+# Application du StandardScaler de scikit-learn
+scaler = StandardScaler()
+df_scaled[features_all] = scaler.fit_transform(df[features_all])
+
+# --- 2. CONFIGURATION DE LA GRILLE ADAPTATIVE ---
+nb_features = len(features_all)
+nb_colonnes_grid = 3
+nb_lignes_grid = (nb_features + nb_colonnes_grid - 1) // nb_colonnes_grid
+
+fig, axes = plt.subplots(nb_lignes_grid, nb_colonnes_grid, figsize=(18, 5 * nb_lignes_grid))
+axes = axes.flatten()
+
+print("Génération des regplots avec coefficients standardisés...")
+
+# --- 3. TRACÉ DES GRAPHIQUES ---
+for i, col in enumerate(features_all):
+    # Tracé sur les données standardisées
+    sns.regplot(
+        x='quality', y=col, data=df_scaled, ax=axes[i], x_jitter=0.2, 
+        line_kws={'color':'red', 'linewidth': 2}, 
+        scatter_kws={'alpha':0.3, 'color':'teal'}
+    )
+    
+    # Calcul de la pente standardisée
+    pente_std, ordonnee = np.polyfit(df_scaled['quality'], df_scaled[col], 1)
+    
+    # Affichage de la pente (Coefficient Bêta)
+    axes[i].text(0.55, 0.9, f'Pente Std = {pente_std:.4f}', 
+                 transform=axes[i].transAxes, 
+                 fontsize=11, 
+                 fontweight='bold',
+                 color='red',
+                 bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    # Habillage des graphiques
+    axes[i].set_title(f'{col} (Standardisé) vs Qualité', fontsize=12, fontweight='bold')
+    axes[i].set_xlabel('Qualité (Note)')
+    axes[i].set_ylabel(f'{col} (Z-score)')
+    axes[i].grid(True, linestyle='--', alpha=0.3)
+
+# Suppression des cases vides
+for j in range(nb_features, len(axes)):
+    fig.delaxes(axes[j])
+
+# Ajustements anti-chevauchement
+plt.tight_layout()
+plt.suptitle("Analyse Systématique via Coefficients Standardisés", fontsize=20, fontweight='bold')
+fig.subplots_adjust(top=0.90, hspace=0.4, wspace=0.3)
+
+plt.show()
+
 
 
