@@ -17,7 +17,7 @@ from sklearn.metrics import (
 )
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression
 
 import warnings
@@ -41,55 +41,77 @@ COLORS = {'bad': '#F44336', 'good': '#4CAF50', 'accent': '#FF9800',
 print('Ready.')
 
 
+df = pd.read_csv('./winequality-red.csv') 
+print(f'Shape initial : {df.shape}')
 
-
-df = pd.read_csv('./WineQT.csv')
-print(f'Shape: {df.shape}')
-df.head()
-
-
-# Quick checks
-print('Missing values:', df.isnull().sum().sum())
-print(f'Duplicates: {df.duplicated().sum()}')
+# Suppression des doublons (Data Cleaning)
+df.drop_duplicates(inplace=True)
+print(f'Shape après suppression des doublons : {df.shape}')
 
 
 
-df = df.drop(['Id','pH','residual sugar','free sulfur dioxide','chlorides'], axis=1)
-print('Dropped Id, pH, residual sugar, chlorides, and free sulfur dioxide columns.')
+# Variable 1 : Le ratio de dioxyde de soufre (Soufre actif relatif)
+df['sulfur_dioxide_ratio'] = np.where(
+    df['total sulfur dioxide'] > 0, 
+    df['free sulfur dioxide'] / df['total sulfur dioxide'], 
+    0
+)
+
+# Variable 2 : L'indice d'impact pH / Chlorures (Indicateur d'altération)
+df['pH_chlorides_impact'] = df['pH'] * df['chlorides']
+
+# Variable 3 : Somme des "bonnes" acidités d'origine fruitée
+df['total_good_acidity'] = df['fixed acidity'] + df['citric acid']
+
+print('Les 3 variables handcrafted ont été ajoutées.')
+
+
+df = df.drop([
+    'free sulfur dioxide', 
+    'total sulfur dioxide', 
+    'chlorides',
+    'residual sugar',
+    'pH',
+    'fixed acidity',
+    'citric acid'
+], axis=1, errors='ignore')
+
+print('Dropped free sulfur dioxide, total sulfur dioxide, and chlorides columns.')
+print(f'Shape final du DataFrame : {df.shape}\n')
 
 print(df)
 
 
+# =========================================================================
+# MATRICE DE CORRÉLATION DU NOUVEAU JEU DE DONNÉES
+# =========================================================================
 
-# --- GRAPHIQUE 4 : RAPPORT entre variables et quality ---
-# --- 14. Scatter Plots with Trend Lines (The Ultimate Proof) ---
-# We will plot every single feature against Quality.
-# We add a "Regression Line" to prove the direction of the relationship.
-# x_jitter: Shakes the dots slightly so they don't overlap perfectly.
+# Calcul de la matrice de corrélation (Pearson par défaut)
+nouveau_corr = df.corr()
 
-features_all = [
-    'fixed acidity', 'volatile acidity', 'citric acid', 'residual sugar',
-    'chlorides', 'free sulfur dioxide', 'total sulfur dioxide', 'density',
-    'pH', 'sulphates', 'alcohol'
-]
-# Create a 4x3 grid (12 slots for 11 features)
-fig, axes = plt.subplots(4, 3, figsize=(20, 20))
-axes = axes.flatten() # Flatten the grid for easy looping
+print("--- VALEURS DE LA NOUVELLE MATRICE DE CORRÉLATION ---")
+print(nouveau_corr.round(2)) # Arrondi à 2 décimales pour une lecture plus propre
 
-for i, col in enumerate(features_all):
-    # sns.regplot is powerful: It shows the dots AND the best-fitting line.
-    # scatter_kws={'alpha':0.3}: Makes dots transparent so we see density.
-    sns.regplot(x='quality', y=col, data=df, ax=axes[i], x_jitter=0.2, 
-                line_kws={'color':'red'}, scatter_kws={'alpha':0.3, 'color':'teal'})
-    
-    axes[i].set_title(f'{col} vs Quality', fontsize=12, fontweight='bold')
-    axes[i].set_xlabel('Quality')
-    axes[i].set_ylabel(col)
+# Visualisation graphique de la matrice
+plt.figure(figsize=(10, 8))
 
-# Remove the empty 12th plot
-fig.delaxes(axes[11])
+# Masque pour masquer la moitié supérieure diagonale (optionnel, pour alléger le visuel)
+mask = np.triu(np.ones_like(nouveau_corr, dtype=bool))
 
+# Création de la heatmap
+sns.heatmap(
+    nouveau_corr, 
+    mask=mask,
+    annot=True,             # Affiche les valeurs numériques dans les cases
+    fmt=".2f",              # Format à 2 décimales
+    cmap="coolwarm",        # Palette de couleurs (bleu=négatif, rouge=positif)
+    vmax=1, vmin=-1,        # Bornes de l'échelle des couleurs
+    center=0,               # Le blanc représente l'absence de corrélation
+    square=True,            # Cases carrées
+    linewidths=.5,          # Ligne de séparation entre les cases
+    cbar_kws={"shrink": .8} # Réduction de la taille de la barre de légende
+)
+
+plt.title("Nouvelle Matrice de Corrélation\n(Après Feature Engineering et Nettoyage)", fontweight='bold', pad=20)
 plt.tight_layout()
 plt.show()
-
-
