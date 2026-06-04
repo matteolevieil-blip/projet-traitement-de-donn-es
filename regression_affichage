@@ -1,0 +1,114 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
+
+# ====================================================================
+# 1. PRÉPARATION DES DONNÉES ET FEATURE ENGINEERING
+# ====================================================================
+sns.set_theme(style="whitegrid")
+
+print("Chargement des données et préparation...")
+# /!\ Vérifie ton chemin d'accès /!\
+df = pd.read_csv('C:/Users/mehdi/Documents/introduction_traitement_données/winequality-red.csv')
+
+def categoriser_vin(note):
+    if note <= 4: return 'Médiocre'
+    elif note <= 6: return 'Standard'
+    else: return 'Exceptionnel'
+
+df['Catégorie'] = df['quality'].apply(categoriser_vin)
+
+# Création de nos Handcrafted Features
+df['Indice Soustraction'] = df['alcohol'] - df['volatile acidity']
+df['Indice Multiplication'] = df['alcohol'] * df['sulphates']
+df['Indice Ultime'] = (df['alcohol'] * df['sulphates']) / (df['volatile acidity'] + 0.0001)
+df['Indice Balance (Sulfates - Volatile)'] = df['sulphates'] - df['volatile acidity']
+
+# Feature Selection : On supprime la cible et les 3 variables redondantes
+# (On garde TOUTES les autres variables d'origine : pH, densité, chlorures, etc.)
+X = df.drop(columns=['quality', 'Catégorie', 'alcohol', 'sulphates', 'volatile acidity'])
+y = df['Catégorie']
+
+# ====================================================================
+# 2. ENTRAÎNEMENT DU MODÈLE SOFTMAX
+# ====================================================================
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Entraînement avec équilibrage des poids !
+model = LogisticRegression(class_weight='balanced', max_iter=1000)
+model.fit(X_train_scaled, y_train)
+y_pred = model.predict(X_test_scaled)
+
+# --- NOUVEAU : Affichage des performances dans la console ---
+precision = accuracy_score(y_test, y_pred)
+print("\n" + "="*50)
+print(f"🎯 Précision globale de l'IA : {precision * 100:.2f}%")
+print("="*50)
+print("\nRapport détaillé par classe :")
+print(classification_report(y_test, y_pred))
+print("====================================================\n")
+
+# ====================================================================
+# 3. GÉNÉRATION DU TABLEAU DE BORD VISUEL (Les 2 Graphiques)
+# ====================================================================
+print("Génération des graphiques du modèle Softmax...")
+
+fig, axes = plt.subplots(1, 2, figsize=(18, 8))
+
+# --- GRAPHIQUE 1 : LA MATRICE DE CONFUSION ---
+labels_ordre = ['Médiocre', 'Standard', 'Exceptionnel']
+cm = confusion_matrix(y_test, y_pred, labels=labels_ordre)
+
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=labels_ordre, yticklabels=labels_ordre, 
+            ax=axes[0], square=True, cbar_kws={"shrink": .8}, annot_kws={"size": 14, "weight": "bold"})
+
+axes[0].set_title("1. Matrice de Confusion\n(Performance réelle du modèle équilibré)", fontsize=14, fontweight='bold', pad=15)
+axes[0].set_xlabel("Prédiction de l'IA", fontsize=12, fontweight='bold', color='gray')
+axes[0].set_ylabel("Réalité (Note des Experts)", fontsize=12, fontweight='bold', color='gray')
+
+# --- GRAPHIQUE 2 : LE POIDS DE TOUTES LES VARIABLES ---
+# On extrait les poids que la machine a donnés pour prédire la classe "Exceptionnel"
+idx_exceptionnel = list(model.classes_).index('Exceptionnel')
+poids_exceptionnel = model.coef_[idx_exceptionnel]
+
+# Création du DataFrame pour trier les poids
+df_coefs = pd.DataFrame({
+    'Variable': X.columns,
+    'Poids': poids_exceptionnel
+})
+
+# On ajoute une colonne pour distinguer nos variables créées des autres
+nouvelles_vars = ['Indice Soustraction', 'Indice Multiplication', 'Indice Ultime', 'Indice Balance (Sulfates - Volatile)']
+df_coefs['Type'] = df_coefs['Variable'].apply(lambda x: "Créée par nous (Handcrafted)" if x in nouvelles_vars else "D'origine (Brute)")
+
+# Tri de la plus importante (en haut) à la moins importante
+df_coefs = df_coefs.sort_values(by='Poids', ascending=False)
+
+# Affichage du Barplot (Vert pour les nôtres, Gris pour l'origine)
+sns.barplot(data=df_coefs, x='Poids', y='Variable', hue='Type', dodge=False,
+            palette={'Créée par nous (Handcrafted)': '#2ca02c', "D'origine (Brute)": '#cccccc'}, 
+            ax=axes[1])
+
+# Esthétique du graphique 2
+axes[1].set_title("2. Dans le cerveau de l'IA :\nPoids de TOUTES les variables pour prédire un Grand Cru", fontsize=14, fontweight='bold', pad=15)
+axes[1].set_xlabel("Importance mathématique (Poids Softmax)", fontsize=12)
+axes[1].set_ylabel("")
+axes[1].axvline(0, color='black', linewidth=1.5) # Ligne centrale
+axes[1].spines['top'].set_visible(False)
+axes[1].spines['right'].set_visible(False)
+axes[1].legend(title="Origine de la variable", loc='lower right')
+
+# Ajout du titre global
+plt.suptitle("Évaluation de la Régression Softmax : Transparence et Interprétabilité", fontsize=18, fontweight='bold', y=1.05)
+plt.tight_layout()
+plt.show()
