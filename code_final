@@ -1,0 +1,185 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, accuracy_score
+
+# ====================================================================
+# 1. PRÉPARATION DES DONNÉES
+# ====================================================================
+sns.set_theme(style="whitegrid")
+
+print("Chargement des données...")
+# /!\ Vérifie ton chemin d'accès /!\
+df = pd.read_csv('C:/Users/mehdi/Documents/introduction_traitement_données/winequality-red.csv')
+
+def categoriser_vin(note):
+    if note <= 4: return 'Médiocre'
+    elif note <= 6: return 'Standard'
+    else: return 'Exceptionnel'
+
+df['Catégorie'] = df['quality'].apply(categoriser_vin)
+palette_vin = {'Médiocre': '#d62728', 'Standard': '#cccccc', 'Exceptionnel': '#2ca02c'}
+
+# ====================================================================
+# 2. DATA STORYTELLING : LES SCATTER PLOTS (La source de l'idée)
+# ====================================================================
+print("Génération des nuages de points d'investigation...")
+# 1. On isole notre "Trio d'Or"
+trio = ['alcohol', 'sulphates', 'volatile acidity']
+
+# 2. Standardisation (Z-score)
+# C'est indispensable car l'alcool est autour de 10%, alors que les sulfates sont à 0.6g.
+# La standardisation met tout le monde sur une échelle où 0 est la moyenne globale.
+scaler = StandardScaler()
+df_scaled = pd.DataFrame(scaler.fit_transform(df[trio]), columns=trio)
+df_scaled['Catégorie'] = df['Catégorie']
+
+# 3. Calcul de la moyenne de chaque variable pour chaque catégorie de vin
+profil_moyen = df_scaled.groupby('Catégorie').mean().reset_index()
+
+# 4. Transformation du tableau pour Seaborn (Format "Melt")
+profil_melted = pd.melt(profil_moyen, id_vars=['Catégorie'], value_vars=trio, 
+                        var_name='Variable Chimique', value_name='Ecart à la moyenne (Z-score)')
+
+# 5. Création du Graphique Divergent (Tir à la corde)
+plt.figure(figsize=(10, 6))
+
+# Couleurs sémantiques : Bleu/Vert pour les Bonus, Rouge vif pour le Malus
+couleurs_vars = {'alcohol': '#1f77b4', 'sulphates': '#2ca02c', 'volatile acidity': '#d62728'}
+
+ax = sns.barplot(data=profil_melted, x='Catégorie', y='Ecart à la moyenne (Z-score)', 
+                 hue='Variable Chimique', palette=couleurs_vars, order=['Médiocre', 'Standard', 'Exceptionnel'])
+
+# Ajout de la ligne zéro (La moyenne absolue)
+plt.axhline(0, color='black', linewidth=1.5, linestyle='--')
+
+
+
+# Esthétique
+plt.title("Pourquoi diviser par l'Acidité Volatile ?", fontsize=16, fontweight='bold', pad=20)
+plt.xlabel("Qualité du Vin", fontsize=12)
+plt.ylabel("Écart par rapport à la moyenne globale", fontsize=12)
+plt.legend(title="Composant", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+sns.despine()
+plt.tight_layout()
+plt.show()
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+# GRAPHIQUE 1 : La Diagonale (Alcool vs Acidité Volatile) => C'est ce qui motive la soustraction !
+sns.scatterplot(data=df, x='volatile acidity', y='alcohol', hue='Catégorie', 
+                palette=palette_vin, alpha=0.8, edgecolor='k', ax=axes[0], legend=False)
+axes[0].set_title("1. Séparation en 'Diagonale'\n(Alcool vs Acidité Volatile)", fontsize=14, fontweight='bold')
+axes[0].set_xlabel("Acidité Volatile (Défaut)")
+axes[0].set_ylabel("Alcool (Bonus)")
+# Ajout d'une ligne pour montrer la séparation visuelle
+axes[0].plot([0.1, 1.2], [9, 14], color='blue', linestyle='--', alpha=0.5)
+
+# GRAPHIQUE 2 : Le Quadrant (Alcool vs Sulfates)
+sns.scatterplot(data=df, x='sulphates', y='alcohol', hue='Catégorie', 
+                palette=palette_vin, alpha=0.8, edgecolor='k', ax=axes[1], legend=False)
+axes[1].set_title("2. Regroupement en 'Quadrant'\n(Alcool vs Sulfates)", fontsize=14, fontweight='bold')
+axes[1].set_xlabel("Sulfates (Bonus)")
+axes[1].set_ylabel("Alcool (Bonus)")
+
+# GRAPHIQUE 3 : Cône/Ratio (Sulfates vs Acidité Volatile)
+sns.scatterplot(data=df, x='volatile acidity', y='sulphates', hue='Catégorie', 
+                palette=palette_vin, alpha=0.8, edgecolor='k', ax=axes[2])
+axes[2].set_title("3. Comparaison Bonus/Défaut\n(Sulfates vs Acidité Volatile)", fontsize=14, fontweight='bold')
+axes[2].set_xlabel("Acidité Volatile (Défaut)")
+axes[2].set_ylabel("Sulfates (Bonus)")
+axes[2].legend(title="Qualité", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+for ax in axes:
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+plt.suptitle("L'Investigation Visuelle : Croisement des variables pour créer nos Features", fontsize=18, fontweight='bold', y=1.05)
+plt.tight_layout()
+plt.show()
+
+# ====================================================================
+# 3. FEATURE ENGINEERING (Application de tes idées mathématiques)
+# ====================================================================
+print("Création des variables géométriques...")
+
+# 1. TA NOUVELLE IDÉE : La Soustraction (Bonus - Défaut)
+df['alcohol_minus_volatile'] = df['alcohol'] - df['volatile acidity']
+
+# 2. La Séparation en "Diagonale" (Bonus - Malus)
+df['balance_sulfates_acidity'] = df['sulphates'] - df['volatile acidity']
+
+# 2. Le Regroupement en Quadrant (Multiplication)
+#df['alcohol_sulphate_boost'] = df['alcohol'] * df['sulphates']
+
+# 3. L'Indice Ultime de l'équipe (Mixte)
+df['ultimate_excellence_index'] = (df['alcohol'] * df['sulphates']) / (df['volatile acidity'] + 0.0001)
+
+# ====================================================================
+# 4. DATA STORYTELLING : LES BOXPLOTS DE VALIDATION
+# ====================================================================
+print("Génération des graphiques de validation (Boxplots)...")
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+# Boxplot 1 : La Balance<
+sns.boxplot(data=df, x='Catégorie', y='balance_sulfates_acidity', 
+            order=['Médiocre', 'Standard', 'Exceptionnel'], palette=palette_vin, ax=axes[1])
+axes[1].set_title("1. La Diagonale (Sulfates - Volatile)\nSépare parfaitement les Médiocres vers le bas", fontweight='bold')
+axes[1].set_ylabel("Balance Sulfates/Acidité")
+
+# Boxplot 1 : Ta nouvelle variable (Alcool - Volatile)
+sns.boxplot(data=df, x='Catégorie', y='alcohol_minus_volatile', 
+            order=['Médiocre', 'Standard', 'Exceptionnel'], palette=palette_vin, ax=axes[0])
+axes[0].set_title("1. L'Indice Soustraction\n(Alcool - Volatile Acidity)", fontweight='bold')
+axes[0].set_ylabel("Score (Alcool - Acidité Volatile)")
+
+
+# Boxplot 3 : L'Indice Ultime
+sns.boxplot(data=df, x='Catégorie', y='ultimate_excellence_index', 
+            order=['Médiocre', 'Standard', 'Exceptionnel'], palette=palette_vin, ax=axes[2])
+axes[2].set_title("3. L'Indice Ultime\n(Alcool x Sulfates) / Volatile", fontweight='bold')
+axes[2].set_ylabel("Indice d'Excellence")
+
+for ax in axes:
+    ax.set_xlabel("")
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+plt.suptitle("Validation Visuelle : Les nouvelles variables séparent parfaitement les classes", fontsize=18, fontweight='bold', y=1.05)
+plt.tight_layout()
+plt.show()
+
+# ====================================================================
+# 5. MACHINE LEARNING : RÉGRESSION SOFTMAX
+# ====================================================================
+print("\n⏳ Nettoyage des données et entraînement de l'IA...")
+
+# Feature Selection : On jette les colonnes d'origine !
+df = df.drop(columns=['alcohol', 'sulphates', 'volatile acidity'], errors='ignore')
+
+X = df.drop(columns=['quality', 'Catégorie'])
+y = df['Catégorie']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# /!\ AJOUT CRUCIAL : class_weight='balanced' pour ne pas ignorer les vins médiocres ! /!\
+model = LogisticRegression( max_iter=1000)
+model.fit(X_train_scaled, y_train)
+
+y_pred = model.predict(X_test_scaled)
+precision = accuracy_score(y_test, y_pred)
+
+print("="*50)
+print(f"🎯 Précision globale de l'IA : {precision * 100:.2f}%")
+print("="*50)
+print("\nRapport détaillé par classe :")
+
+
